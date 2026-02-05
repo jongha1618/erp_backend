@@ -241,78 +241,44 @@ const receiveItem = (podId, data, callback) => {
                   return callback(err);
                 }
 
-                // 3. Check if inventory record exists for this item
+                // 3. Always create a new inventory record for each receive
+                // This allows tracking different batches with different batch_number/expiry_date
                 connection.query(
-                  'SELECT inventory_id, quantity FROM ep_inventories WHERE item_id = ?',
-                  [item_id],
-                  (err, inventoryResults) => {
+                  `INSERT INTO ep_inventories
+                   (item_id, batch_number, expiry_date, quantity, location, pod_id, created_at, updated_at, received_by)
+                   VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW(), ?)`,
+                  [item_id, batch_number || null, expiry_date || null, received_quantity, location || null, podId, validReceivedBy],
+                  (err, insertResult) => {
                     if (err) {
                       connection.rollback(() => connection.release());
                       return callback(err);
                     }
 
-                    let inventoryId;
-                    const handleInventoryTransaction = (invId) => {
-                      // 4. Create inventory transaction record
-                      connection.query(
-                        `INSERT INTO ep_inventory_transactions
-                         (inventory_id, item_id, quantity, pod_id, transaction_type, transaction_date, notes, created_by, created_at)
-                         VALUES (?, ?, ?, ?, 'purchase', ?, ?, ?, NOW())`,
-                        [invId, item_id, received_quantity, podId, received_date,
-                         notes ? `Received from PO - ${notes}` : 'Received from PO', validReceivedBy],
-                        (err) => {
-                          if (err) {
-                            connection.rollback(() => connection.release());
-                            return callback(err);
-                          }
+                    const inventoryId = insertResult.insertId;
 
-                          connection.commit((err) => {
-                            if (err) {
-                              connection.rollback(() => connection.release());
-                              return callback(err);
-                            }
-                            connection.release();
-                            callback(null, { success: true, inventory_id: invId });
-                          });
+                    // 4. Create inventory transaction record
+                    connection.query(
+                      `INSERT INTO ep_inventory_transactions
+                       (inventory_id, item_id, quantity, pod_id, transaction_type, transaction_date, notes, created_by, created_at)
+                       VALUES (?, ?, ?, ?, 'purchase', ?, ?, ?, NOW())`,
+                      [inventoryId, item_id, received_quantity, podId, received_date,
+                       notes ? `Received from PO - ${notes}` : 'Received from PO', validReceivedBy],
+                      (err) => {
+                        if (err) {
+                          connection.rollback(() => connection.release());
+                          return callback(err);
                         }
-                      );
-                    };
 
-                    if (inventoryResults.length > 0) {
-                      // Update existing inventory record
-                      inventoryId = inventoryResults[0].inventory_id;
-                      connection.query(
-                        `UPDATE ep_inventories
-                         SET quantity = quantity + ?,
-                             updated_at = NOW(),
-                             received_by = ?
-                         WHERE inventory_id = ?`,
-                        [received_quantity, validReceivedBy, inventoryId],
-                        (err) => {
+                        connection.commit((err) => {
                           if (err) {
                             connection.rollback(() => connection.release());
                             return callback(err);
                           }
-                          handleInventoryTransaction(inventoryId);
-                        }
-                      );
-                    } else {
-                      // Insert new inventory record
-                      connection.query(
-                        `INSERT INTO ep_inventories
-                         (item_id, batch_number, expiry_date, quantity, location, created_at, updated_at, received_by)
-                         VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?)`,
-                        [item_id, batch_number || null, expiry_date || null, received_quantity, location || null, validReceivedBy],
-                        (err, insertResult) => {
-                          if (err) {
-                            connection.rollback(() => connection.release());
-                            return callback(err);
-                          }
-                          inventoryId = insertResult.insertId;
-                          handleInventoryTransaction(inventoryId);
-                        }
-                      );
-                    }
+                          connection.release();
+                          callback(null, { success: true, inventory_id: inventoryId });
+                        });
+                      }
+                    );
                   }
                 );
               }
