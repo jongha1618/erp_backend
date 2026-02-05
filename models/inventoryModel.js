@@ -1,6 +1,6 @@
 const db = require('../config/db');
 
-// 모든 인벤토리 조회 (ep_inventories)
+// 모든 인벤토리 조회 (ep_inventories) - item_code 그룹, FIFO 순서
 const getInventories = (callback) => {
   db.query(
     `SELECT inv.*,
@@ -8,12 +8,13 @@ const getInventories = (callback) => {
             i.item_code,
             i.part_number,
             CONCAT(u.first_name, ' ', u.last_name) as received_by_name,
-            CONCAT(a.first_name, ' ', a.last_name) as assigned_to_name
+            CONCAT(a.first_name, ' ', a.last_name) as assigned_to_name,
+            (inv.quantity - COALESCE(inv.reservation_qty, 0)) as available_qty
      FROM ep_inventories inv
      LEFT JOIN ep_items i ON inv.item_id = i.item_id
      LEFT JOIN ep_users u ON inv.received_by = u.user_id
      LEFT JOIN ep_users a ON inv.assigned_to = a.user_id
-     ORDER BY inv.updated_at DESC`,
+     ORDER BY i.item_code ASC, inv.created_at ASC`,
     callback
   );
 };
@@ -37,17 +38,19 @@ const getInventoryById = (id, callback) => {
   );
 };
 
-// 특정 아이템의 인벤토리 조회
+// 특정 아이템의 인벤토리 조회 - FIFO 순서
 const getInventoryByItemId = (itemId, callback) => {
   db.query(
     `SELECT inv.*,
             i.name as item_name,
             i.item_code,
-            CONCAT(u.first_name, ' ', u.last_name) as received_by_name
+            CONCAT(u.first_name, ' ', u.last_name) as received_by_name,
+            (inv.quantity - COALESCE(inv.reservation_qty, 0)) as available_qty
      FROM ep_inventories inv
      LEFT JOIN ep_items i ON inv.item_id = i.item_id
      LEFT JOIN ep_users u ON inv.received_by = u.user_id
-     WHERE inv.item_id = ?`,
+     WHERE inv.item_id = ?
+     ORDER BY inv.created_at ASC`,
     [itemId],
     callback
   );

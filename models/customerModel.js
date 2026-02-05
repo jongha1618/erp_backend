@@ -35,11 +35,11 @@ const addCustomer = (data, callback) => {
     shipping_contact_name, shipping_phone, shipping_address, shipping_address_city, shipping_address_state, shipping_address_zip
   } = data;
 
-  const sql = `INSERT INTO ep_customers 
-              (company_name, contact_name, contact_email, contact_phone, 
-              billing_contact_name, billing_phone, billing_address, billing_address_city, billing_address_state, billing_address_zip, 
-              shipping_contact_name, shipping_phone, shipping_address, shipping_address_city, shipping_address_state, shipping_address_zip) 
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const sql = `INSERT INTO ep_customers
+              (company_name, contact_name, contact_email, contact_phone,
+              billing_contact_name, billing_phone, billing_address, billing_address_city, billing_address_state, billing_address_zip,
+              shipping_contact_name, shipping_phone, shipping_address, shipping_address_city, shipping_address_state, shipping_address_zip)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
   db.query(sql, [
     company_name, contact_name, contact_email, contact_phone,

@@ -2,43 +2,43 @@ const express = require('express');
 const router = express.Router();
 const salesController = require('../controllers/salesController');
 
+// Sales 목록 조회
 router.get('/', salesController.getAllSales);
-router.get('/:sales_id', salesController.getSalesDetails);
 
-// router.get('/', (req, res) => {
-//   const query = `SELECT * FROM ep_item_details WHERE transaction_type = "sale"`;
+// 특정 아이템의 가용 Inventory 조회 (Ship dialog용) - :id 보다 먼저 정의
+router.get('/inventory/:item_id', salesController.getInventoryForItem);
 
-//   db.query(query, (err, results) => {
-//     if (err) {
-//       console.error('Error fetching sales:', err);
-//       return res.status(500).send('Server error');
-//     }
-//     res.json(results);
-//   });
-// });
+// 특정 Sale 상세 조회 (헤더 + 상세 항목)
+router.get('/:id', salesController.getSaleFullDetails);
 
-// router.get('/details', (req, res) => {
-//   const { item_id } = req.query;
+// 새 Sale 생성 (헤더 + 상세 항목)
+router.post('/', salesController.createSale);
 
-//   if (!item_id) return res.status(400).send('item_id is required');
+// Sale 헤더 업데이트
+router.put('/:id', salesController.updateSaleHeader);
 
-//   const query = `
-//     SELECT * 
-//     FROM ep_item_details 
-//     LEFT JOIN ep_items ON ep_item_details.item_id = ep_items.item_id
-//     WHERE ep_item_details.transaction_type = 'sale' 
-//     AND ep_item_details.item_id = ?
-//     ORDER BY ep_item_details.updated_date DESC`;
+// Sale 상태 업데이트
+router.patch('/:id/status', salesController.updateSaleStatus);
 
-//   db.query(query, [item_id], (err, results) => {
-//     if (err) {
-//       console.error('Error fetching sales details:', err);
-//       return res.status(500).send('Server error');
-//     }
-//     res.json(results);
-//   });
-// });
+// Sale 삭제
+router.delete('/:id', salesController.deleteSale);
+
+// 기존 Sale에 상세 항목 추가
+router.post('/:id/details', salesController.addDetailToSale);
+
+// Sale 상세 항목 업데이트
+router.put('/details/:detail_id', salesController.updateSaleDetailItem);
+
+// Sale 상세 항목 삭제
+router.delete('/details/:detail_id', salesController.deleteSaleDetailItem);
+
+// Ship 처리
+router.post('/details/:detail_id/ship', salesController.shipItem);
+
+// 재고 예약 (Reserve inventory)
+router.post('/inventory/reserve', salesController.reserveInventory);
+
+// 예약 해제 (Release reservation)
+router.post('/inventory/release', salesController.releaseReservation);
 
 module.exports = router;
-
-
