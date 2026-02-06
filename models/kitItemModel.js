@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const PurchaseRequest = require('./purchaseRequestModel');
 
 // Get all kit items
 const getKitItems = (callback) => {
@@ -154,7 +155,7 @@ const deleteKitItem = (id, callback) => {
   });
 };
 
-// Reserve components for kit building
+// Reserve components for kit building (allows negative available with warning)
 const reserveComponents = (kitItemId, callback) => {
   db.getConnection((err, connection) => {
     if (err) return callback(err);
@@ -181,9 +182,16 @@ const reserveComponents = (kitItemId, callback) => {
 
           const quantityToBuild = kitResults[0].quantity_to_build;
 
-          // Get all components
+          // Get all components with inventory info
           connection.query(
-            'SELECT * FROM ep_kit_item_components WHERE kit_item_id = ?',
+            `SELECT c.*, i.item_code, i.name as item_name,
+                    inv.quantity as inv_quantity,
+                    COALESCE(inv.reservation_qty, 0) as inv_reservation_qty,
+                    (inv.quantity - COALESCE(inv.reservation_qty, 0)) as available_qty
+             FROM ep_kit_item_components c
+             LEFT JOIN ep_items i ON c.item_id = i.item_id
+             LEFT JOIN ep_inventories inv ON c.inventory_id = inv.inventory_id
+             WHERE c.kit_item_id = ?`,
             [kitItemId],
             (err, components) => {
               if (err) {
@@ -196,6 +204,21 @@ const reserveComponents = (kitItemId, callback) => {
                 return callback(new Error('No components found for this kit'));
               }
 
+              // Check for insufficient inventory and collect warnings
+              const warnings = [];
+              components.forEach((comp) => {
+                const totalNeeded = comp.quantity_per_kit * quantityToBuild;
+                if (comp.available_qty < totalNeeded) {
+                  warnings.push({
+                    item_code: comp.item_code,
+                    item_name: comp.item_name,
+                    needed: totalNeeded,
+                    available: comp.available_qty,
+                    shortage: totalNeeded - comp.available_qty
+                  });
+                }
+              });
+
               let completedCount = 0;
               let hasError = false;
 
@@ -204,14 +227,13 @@ const reserveComponents = (kitItemId, callback) => {
 
                 const totalNeeded = comp.quantity_per_kit * quantityToBuild;
 
-                // Reserve inventory
+                // Reserve inventory (no available check - allow negative)
                 connection.query(
                   `UPDATE ep_inventories
                    SET reservation_qty = COALESCE(reservation_qty, 0) + ?,
                        updated_at = NOW()
-                   WHERE inventory_id = ?
-                     AND (quantity - COALESCE(reservation_qty, 0)) >= ?`,
-                  [totalNeeded, comp.inventory_id, totalNeeded],
+                   WHERE inventory_id = ?`,
+                  [totalNeeded, comp.inventory_id],
                   (err, result) => {
                     if (hasError) return;
 
@@ -219,12 +241,6 @@ const reserveComponents = (kitItemId, callback) => {
                       hasError = true;
                       connection.rollback(() => connection.release());
                       return callback(err);
-                    }
-
-                    if (result.affectedRows === 0) {
-                      hasError = true;
-                      connection.rollback(() => connection.release());
-                      return callback(new Error(`Insufficient inventory for component: ${comp.item_id}`));
                     }
 
                     // Update component reserved quantity
@@ -261,7 +277,53 @@ const reserveComponents = (kitItemId, callback) => {
                                   return callback(err);
                                 }
                                 connection.release();
-                                callback(null, { success: true, message: 'Components reserved successfully' });
+
+                                // Auto-create PO Requests for insufficient inventory
+                                const createdRequests = [];
+                                if (warnings.length > 0) {
+                                  let requestCount = 0;
+                                  warnings.forEach((warning) => {
+                                    const requestData = {
+                                      item_id: components.find(c => c.item_code === warning.item_code)?.item_id,
+                                      quantity_needed: warning.shortage,
+                                      source_type: 'kit_reserve',
+                                      source_id: kitItemId,
+                                      priority: 'normal',
+                                      notes: `Auto-generated: Kit #${kitItemId} needs ${warning.needed} of ${warning.item_code} (${warning.item_name}), only ${warning.available} available`
+                                    };
+
+                                    PurchaseRequest.addOrUpdateRequest(requestData, (err, result) => {
+                                      requestCount++;
+                                      if (!err && result) {
+                                        createdRequests.push({
+                                          request_id: result.request_id,
+                                          item_code: warning.item_code,
+                                          shortage: warning.shortage,
+                                          updated: result.updated
+                                        });
+                                      }
+
+                                      // All requests processed
+                                      if (requestCount === warnings.length) {
+                                        const resultData = {
+                                          success: true,
+                                          message: 'Components reserved with insufficient inventory warnings. PO Requests created.',
+                                          warnings: warnings,
+                                          purchase_requests: createdRequests
+                                        };
+                                        callback(null, resultData);
+                                      }
+                                    });
+                                  });
+                                } else {
+                                  // No warnings, return success
+                                  const result = {
+                                    success: true,
+                                    message: 'Components reserved successfully',
+                                    warnings: []
+                                  };
+                                  callback(null, result);
+                                }
                               });
                             }
                           );
@@ -307,9 +369,14 @@ const completeKitBuild = (kitItemId, buildQuantity, callback) => {
           const kitItem = kitResults[0];
           const outputItemId = kitItem.output_item_id;
 
-          // Get all components
+          // Get all components with inventory info for shortage detection
           connection.query(
-            'SELECT * FROM ep_kit_item_components WHERE kit_item_id = ?',
+            `SELECT c.*, i.item_code, i.name as item_name,
+                    inv.quantity as inv_quantity
+             FROM ep_kit_item_components c
+             LEFT JOIN ep_items i ON c.item_id = i.item_id
+             LEFT JOIN ep_inventories inv ON c.inventory_id = inv.inventory_id
+             WHERE c.kit_item_id = ?`,
             [kitItemId],
             (err, components) => {
               if (err) {
@@ -319,6 +386,23 @@ const completeKitBuild = (kitItemId, buildQuantity, callback) => {
 
               let completedCount = 0;
               let hasError = false;
+              const shortages = []; // Track items that will go negative
+
+              // Pre-calculate shortages before processing
+              components.forEach((comp) => {
+                const totalUsed = comp.quantity_per_kit * buildQuantity;
+                const afterDeduct = (comp.inv_quantity || 0) - totalUsed;
+                if (afterDeduct < 0) {
+                  shortages.push({
+                    item_id: comp.item_id,
+                    item_code: comp.item_code,
+                    item_name: comp.item_name,
+                    needed: totalUsed,
+                    current_qty: comp.inv_quantity || 0,
+                    shortage: Math.abs(afterDeduct)
+                  });
+                }
+              });
 
               const processComponents = () => {
                 components.forEach((comp) => {
@@ -468,12 +552,54 @@ const completeKitBuild = (kitItemId, buildQuantity, callback) => {
                     return callback(err);
                   }
                   connection.release();
-                  callback(null, {
-                    success: true,
-                    message: outputItemId
-                      ? 'Kit build completed and output inventory created'
-                      : 'Kit build completed successfully'
-                  });
+
+                  // Auto-create PO Requests for items that went negative
+                  if (shortages.length > 0) {
+                    const createdRequests = [];
+                    let requestCount = 0;
+
+                    shortages.forEach((shortage) => {
+                      const requestData = {
+                        item_id: shortage.item_id,
+                        quantity_needed: shortage.shortage,
+                        source_type: 'kit_reserve',
+                        source_id: kitItemId,
+                        priority: 'urgent', // Urgent because inventory is already negative
+                        notes: `Auto-generated (Complete Build): Kit #${kitItemId} (${kitItem.kit_number}) - ${shortage.item_code} (${shortage.item_name}) inventory went negative. Needed: ${shortage.needed}, Had: ${shortage.current_qty}, Shortage: ${shortage.shortage}`
+                      };
+
+                      PurchaseRequest.addOrUpdateRequest(requestData, (err, result) => {
+                        requestCount++;
+                        if (!err && result) {
+                          createdRequests.push({
+                            request_id: result.request_id,
+                            item_code: shortage.item_code,
+                            shortage: shortage.shortage,
+                            updated: result.updated
+                          });
+                        }
+
+                        // All requests processed
+                        if (requestCount === shortages.length) {
+                          callback(null, {
+                            success: true,
+                            message: outputItemId
+                              ? 'Kit build completed and output inventory created'
+                              : 'Kit build completed successfully',
+                            warnings: shortages,
+                            purchase_requests: createdRequests
+                          });
+                        }
+                      });
+                    });
+                  } else {
+                    callback(null, {
+                      success: true,
+                      message: outputItemId
+                        ? 'Kit build completed and output inventory created'
+                        : 'Kit build completed successfully'
+                    });
+                  }
                 });
               };
 

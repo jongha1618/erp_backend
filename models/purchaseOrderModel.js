@@ -111,7 +111,7 @@ const addPurchaseOrderDetail = (data, callback) => {
   );
 };
 
-// PO 헤더 정보 업데이트
+// PO 헤더 정보 업데이트 (status 변경 시 approved/cancelled 정보도 업데이트)
 const updatePurchaseOrder = (id, data, callback) => {
   const {
     supplier_id,
@@ -121,18 +121,34 @@ const updatePurchaseOrder = (id, data, callback) => {
     total_amount,
     status,
     notes,
-    document_link
+    document_link,
+    user_id // 현재 사용자 ID (status 변경 추적용)
   } = data;
 
-  db.query(
-    `UPDATE ep_purchase_orders
+  // Build dynamic query based on status
+  let sql = `UPDATE ep_purchase_orders
      SET supplier_id = ?, po_number = ?, order_date = ?, expected_delivery = ?,
-         total_amount = ?, status = ?, notes = ?, document_link = ?, updated_at = NOW()
-     WHERE purchaseorder_id = ?`,
-    [supplier_id, po_number, order_date, expected_delivery, total_amount,
-     status, notes, document_link, id],
-    callback
-  );
+         total_amount = ?, status = ?, notes = ?, document_link = ?, updated_at = NOW()`;
+
+  let params = [supplier_id, po_number, order_date, expected_delivery, total_amount,
+     status, notes, document_link];
+
+  // Add approved_by and approved_date when status is Approved
+  if (status === 'Approved') {
+    sql += `, approved_by = ?, approved_date = NOW()`;
+    params.push(user_id || null);
+  }
+
+  // Add cancelled_by and cancelled_date when status is Cancelled
+  if (status === 'Cancelled') {
+    sql += `, cancelled_by = ?, cancelled_date = NOW()`;
+    params.push(user_id || null);
+  }
+
+  sql += ` WHERE purchaseorder_id = ?`;
+  params.push(id);
+
+  db.query(sql, params, callback);
 };
 
 // PO 상태 업데이트

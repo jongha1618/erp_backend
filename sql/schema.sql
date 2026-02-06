@@ -78,6 +78,7 @@ CREATE TABLE `ep_inventories` (
   `assigned_to` int DEFAULT NULL,
   `pod_id` int DEFAULT NULL,
   `reservation_qty` int DEFAULT '0',
+  `notes` text,
   PRIMARY KEY (`inventory_id`),
   KEY `item_id` (`item_id`),
   KEY `fk_inv_received_by` (`received_by`),
@@ -118,7 +119,7 @@ DROP TABLE IF EXISTS `ep_inventory_transactions`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `ep_inventory_transactions` (
   `inventory_transaction_id` int NOT NULL AUTO_INCREMENT,
-  `transaction_type` enum('purchase','sale','adjustment') NOT NULL,
+  `transaction_type` enum('purchase','sale','adjustment','kit_usage','kit_production') NOT NULL,
   `transaction_date` datetime DEFAULT CURRENT_TIMESTAMP,
   `reference_number` varchar(50) DEFAULT NULL,
   `supplier_or_customer_id` int DEFAULT NULL,
@@ -241,6 +242,10 @@ CREATE TABLE `ep_purchase_orders` (
   `notes` text,
   `received_date` date DEFAULT NULL,
   `document_link` varchar(255) DEFAULT NULL,
+  `approved_by` int DEFAULT NULL,
+  `approved_date` datetime DEFAULT NULL,
+  `cancelled_by` int DEFAULT NULL,
+  `cancelled_date` datetime DEFAULT NULL,
   PRIMARY KEY (`purchaseorder_id`),
   UNIQUE KEY `po_number` (`po_number`),
   KEY `supplier_id` (`supplier_id`),
@@ -370,5 +375,72 @@ SET @@SESSION.SQL_LOG_BIN = @MYSQLDUMP_TEMP_LOG_BIN;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+--
+-- Table structure for table `ep_purchase_requests`
+--
+
+DROP TABLE IF EXISTS `ep_purchase_requests`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ep_purchase_requests` (
+  `request_id` int NOT NULL AUTO_INCREMENT,
+  `item_id` int NOT NULL,
+  `quantity_needed` decimal(10,2) NOT NULL,
+  `source_type` enum('kit_reserve','manual','sales_order') DEFAULT 'manual',
+  `source_id` int DEFAULT NULL,
+  `status` enum('pending','approved','converted_to_po','cancelled') DEFAULT 'pending',
+  `suggested_supplier_id` int DEFAULT NULL,
+  `priority` enum('normal','urgent') DEFAULT 'normal',
+  `notes` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_by` int DEFAULT NULL,
+  `converted_po_id` int DEFAULT NULL,
+  PRIMARY KEY (`request_id`),
+  KEY `fk_pr_item` (`item_id`),
+  KEY `fk_pr_supplier` (`suggested_supplier_id`),
+  KEY `fk_pr_created_by` (`created_by`),
+  KEY `fk_pr_converted_po` (`converted_po_id`),
+  CONSTRAINT `fk_pr_item` FOREIGN KEY (`item_id`) REFERENCES `ep_items` (`item_id`),
+  CONSTRAINT `fk_pr_supplier` FOREIGN KEY (`suggested_supplier_id`) REFERENCES `ep_suppliers` (`supplier_id`),
+  CONSTRAINT `fk_pr_created_by` FOREIGN KEY (`created_by`) REFERENCES `ep_users` (`user_id`),
+  CONSTRAINT `fk_pr_converted_po` FOREIGN KEY (`converted_po_id`) REFERENCES `ep_purchase_orders` (`purchaseorder_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `ep_company`
+--
+
+DROP TABLE IF EXISTS `ep_company`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ep_company` (
+  `company_id` int NOT NULL AUTO_INCREMENT,
+  `company_name` varchar(200) NOT NULL,
+  `address_line1` varchar(255) DEFAULT NULL,
+  `address_line2` varchar(255) DEFAULT NULL,
+  `city` varchar(100) DEFAULT NULL,
+  `state` varchar(100) DEFAULT NULL,
+  `postal_code` varchar(20) DEFAULT NULL,
+  `country` varchar(100) DEFAULT NULL,
+  `phone` varchar(50) DEFAULT NULL,
+  `fax` varchar(50) DEFAULT NULL,
+  `email` varchar(255) DEFAULT NULL,
+  `website` varchar(255) DEFAULT NULL,
+  `tax_id` varchar(50) DEFAULT NULL,
+  `logo_url` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`company_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Default company data
+--
+INSERT INTO `ep_company` (`company_id`, `company_name`, `address_line1`, `city`, `state`, `postal_code`, `country`, `phone`, `email`, `website`)
+VALUES (1, 'n6tec', '123 Main Street', 'City', 'State', '12345', 'USA', '(123) 456-7890', 'info@n6tec.com', 'www.n6tec.com');
 
 -- Dump completed on 2026-02-05 14:04:08
