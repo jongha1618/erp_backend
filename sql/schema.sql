@@ -180,7 +180,8 @@ CREATE TABLE `ep_items` (
   `item_code` varchar(100) DEFAULT NULL,
   `description` text,
   `serial_number` varchar(100) DEFAULT NULL,
-  `unit_price` decimal(10,2) DEFAULT '0.00',
+  `cost_price` decimal(10,2) DEFAULT '0.00',
+  `sales_price` decimal(10,2) DEFAULT '0.00',
   `instock_quantity` int DEFAULT '0',
   `document_link` varchar(250) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
@@ -612,6 +613,59 @@ CREATE TABLE `ep_work_order_components` (
   CONSTRAINT `fk_woc_item` FOREIGN KEY (`item_id`) REFERENCES `ep_items` (`item_id`),
   CONSTRAINT `fk_woc_inventory` FOREIGN KEY (`inventory_id`) REFERENCES `ep_inventories` (`inventory_id`),
   CONSTRAINT `fk_woc_child_wo` FOREIGN KEY (`child_wo_id`) REFERENCES `ep_work_orders` (`wo_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- ============================================================
+-- Quotation Tables
+-- ============================================================
+
+--
+-- Table structure for table `ep_quotations`
+--
+
+DROP TABLE IF EXISTS `ep_quotations`;
+CREATE TABLE `ep_quotations` (
+  `quotation_id` int NOT NULL AUTO_INCREMENT,
+  `customer_id` int DEFAULT NULL,
+  `quotation_number` varchar(50) DEFAULT NULL,
+  `quotation_date` date DEFAULT NULL,
+  `valid_until` date DEFAULT NULL,
+  `total_amount` decimal(10,2) DEFAULT '0.00',
+  `status` varchar(20) DEFAULT 'draft',
+  `notes` text,
+  `shipping_address` text,
+  `converted_sale_id` int DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` int DEFAULT NULL,
+  `updated_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`quotation_id`),
+  UNIQUE KEY `uk_quotation_number` (`quotation_number`),
+  KEY `fk_qt_customer` (`customer_id`),
+  KEY `fk_qt_created_by` (`created_by`),
+  KEY `fk_qt_converted_sale` (`converted_sale_id`),
+  CONSTRAINT `fk_qt_customer` FOREIGN KEY (`customer_id`) REFERENCES `ep_customers` (`customer_id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_qt_created_by` FOREIGN KEY (`created_by`) REFERENCES `ep_users` (`user_id`),
+  CONSTRAINT `fk_qt_converted_sale` FOREIGN KEY (`converted_sale_id`) REFERENCES `ep_sales` (`sale_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `ep_quotation_details`
+--
+
+DROP TABLE IF EXISTS `ep_quotation_details`;
+CREATE TABLE `ep_quotation_details` (
+  `detail_id` int NOT NULL AUTO_INCREMENT,
+  `quotation_id` int DEFAULT NULL,
+  `item_id` int DEFAULT NULL,
+  `quantity` int NOT NULL,
+  `unit_price` decimal(10,2) DEFAULT NULL,
+  `subtotal` decimal(10,2) DEFAULT NULL,
+  `notes` text,
+  PRIMARY KEY (`detail_id`),
+  KEY `fk_qtd_quotation` (`quotation_id`),
+  KEY `fk_qtd_item` (`item_id`),
+  CONSTRAINT `fk_qtd_quotation` FOREIGN KEY (`quotation_id`) REFERENCES `ep_quotations` (`quotation_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_qtd_item` FOREIGN KEY (`item_id`) REFERENCES `ep_items` (`item_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- ============================================================

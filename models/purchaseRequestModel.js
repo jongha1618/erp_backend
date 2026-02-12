@@ -51,7 +51,7 @@ const getPurchaseRequestById = (id, callback) => {
             i.item_code,
             i.name as item_name,
             i.part_number,
-            i.unit_price,
+            i.cost_price,
             s.company_name as supplier_name,
             CONCAT(u.first_name, ' ', u.last_name) as created_by_name,
             po.po_number as converted_po_number
@@ -195,7 +195,7 @@ const convertToPurchaseOrder = (requestIds, poData, callback) => {
               requests.forEach((req) => {
                 if (hasError) return;
 
-                const unitPrice = req.unit_price || 0;
+                const unitPrice = req.cost_price || 0;
                 const lineTotal = req.quantity_needed * unitPrice;
                 totalAmount += lineTotal;
 

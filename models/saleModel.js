@@ -74,12 +74,13 @@ const addSale = (data, callback) => {
   } = data;
 
   const createdByValue = created_by && created_by !== '' ? created_by : null;
+  const deliveryDateValue = delivery_date && delivery_date !== '' ? delivery_date : null;
 
   db.query(
     `INSERT INTO ep_sales
      (customer_id, sales_number, order_date, delivery_date, total_amount, status, notes, shipping_address, created_by, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-    [customer_id, sales_number, order_date, delivery_date, total_amount, status || 'draft', notes, shipping_address, createdByValue],
+    [customer_id, sales_number, order_date, deliveryDateValue, total_amount, status || 'draft', notes, shipping_address, createdByValue],
     (err, result) => {
       if (err) {
         console.error("Database error:", err);
@@ -115,12 +116,14 @@ const updateSale = (id, data, callback) => {
     shipping_address
   } = data;
 
+  const deliveryDateValue = delivery_date && delivery_date !== '' ? delivery_date : null;
+
   db.query(
     `UPDATE ep_sales
      SET customer_id = ?, sales_number = ?, order_date = ?, delivery_date = ?,
          total_amount = ?, status = ?, notes = ?, shipping_address = ?, updated_at = NOW()
      WHERE sale_id = ?`,
-    [customer_id, sales_number, order_date, delivery_date, total_amount, status, notes, shipping_address, id],
+    [customer_id, sales_number, order_date, deliveryDateValue, total_amount, status, notes, shipping_address, id],
     callback
   );
 };

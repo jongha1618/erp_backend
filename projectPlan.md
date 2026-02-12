@@ -27,6 +27,9 @@
 | PO Request | ✅ | ✅ | Auto-create on Kit Reserve, Convert to PO |
 | BOM (Bill of Materials) | ✅ | ✅ | 마스터 레시피, 하위 조립품 BOM 연결 지원 |
 | Work Orders | ✅ | ✅ | 계층형 WO, BOM 기반 자동 생성, Tree View, Backflushing |
+| Dashboard Statistics | ✅ | ✅ | 6개 통계 카드, 3개 차트, Recent Sales/Activity |
+| Quotation | ✅ | ✅ | CRUD, Convert to Sales Order 기능 |
+| Reports | ✅ | ✅ | 4개 리포트 (Sales, Purchase, Inventory, Production), 필터링, CSV/PDF 내보내기 |
 
 ### 🔄 In Progress
 
@@ -34,10 +37,7 @@
 
 ### 📋 Planned / TODO
 
-- [ ] Quotation & Invoice module
 - [ ] User authentication/authorization
-- [ ] Dashboard statistics
-- [ ] Reports
 
 ---
 
@@ -88,6 +88,65 @@ CREATE TABLE ep_purchase_requests (
 ---
 
 ## Recent Changes (Latest First)
+
+### 2026-02-12
+- **New Feature**: Reports 모듈 완료 (Backend + Frontend)
+  - 4개 리포트: Sales, Purchase, Inventory, Production
+  - 각 리포트 3개 엔드포인트: JSON 데이터 / CSV 내보내기 / PDF 내보내기 (총 12개 API)
+  - 동적 필터링: 날짜 범위 (start_date, end_date), customer_id, supplier_id, item_id, status
+  - 응답 구조: summary (통계 요약) + details (상세 테이블) + grouped (그룹별 집계)
+  - Sales Report: 매출 요약, 주문별 상세, 고객별 그룹핑
+  - Purchase Report: 구매 요약, PO별 상세, 공급업체별 그룹핑
+  - Inventory Report: 재고 요약 (원가/판매가 기준 가치), 아이템별 상세, 위치별 그룹핑
+  - Production Report: 생산 요약 (완료율), WO별 상세, 출력 아이템별 그룹핑
+  - CSV: 문자열 기반 빌더 (외부 라이브러리 없음)
+  - PDF: pdfkit 사용 (회사 정보 헤더 + 필터 정보 + 요약 + 테이블, 자동 페이지 넘김)
+  - Dashboard 모듈의 parallel callback 패턴 기반 구현
+  - Frontend: 탭 기반 4개 리포트 전환, 필터 UI, 요약 카드 4개, 그룹별 Bar Chart, Status Breakdown, Detail 테이블, CSV/PDF 내보내기 버튼
+  - 파일:
+    - Backend: `helpers/exportHelper.js`, `models/reportModel.js`, `controllers/reportController.js`, `routes/reportRoutes.js`, `server.js`
+    - Frontend: `layouts/reports/index.js`, `routes.js`
+  - 의존성 추가: `pdfkit` (backend)
+- **New Feature**: Quotation 모듈 완료
+  - Quotation CRUD (Master-Detail 구조)
+  - Convert to Sales Order 기능 (트랜잭션 기반, 헤더 + 상세 항목 일괄 복사)
+  - 상태 관리: draft, sent, accepted, rejected, expired, converted
+  - converted 상태 시 읽기 전용 (편집 불가)
+  - 목록 페이지: 확장 가능한 행, 검색, Convert → SO 버튼
+  - 폼 페이지: Customer Autocomplete, 아이템 선택 시 `sales_price` 자동 입력, Convert to SO 다이얼로그
+  - DB 테이블: `ep_quotations` (헤더) + `ep_quotation_details` (상세)
+  - `converted_sale_id` 컬럼으로 변환된 Sales Order 추적
+  - 파일:
+    - Backend: `models/quotationModel.js`, `controllers/quotationController.js`, `routes/quotationRoutes.js`, `server.js`
+    - Frontend: `layouts/quotations/index.js`, `quotationform.js`, `quotationsTableData.js`, `routes.js`
+    - DB: `sql/schema.sql`
+- **Enhancement**: Item Price 리팩토링 - `unit_price` → `cost_price` + `sales_price` 분리
+  - `ep_items` 테이블에서 `unit_price` 제거, `cost_price`(구매 원가) + `sales_price`(판매가) 추가
+  - Item 폼에 "Pricing Information" 섹션 추가 (Cost Price, Sales Price 편집 가능)
+  - PO 모듈: 아이템 선택 시 `cost_price` 자동 입력 (기존 `unit_cost` 버그 수정 포함)
+  - Sales 모듈: 아이템 선택 시 `sales_price` 자동 입력
+  - PO Request → PO 변환 시 `cost_price` 사용
+  - 변경 파일:
+    - Backend: `sql/schema.sql`, `models/itemModel.js`, `models/purchaseRequestModel.js`
+    - Frontend: `itemform.js`, `purchaseorderform.js`, `saleform.js`
+- **New Feature**: Dashboard Statistics 모듈 완료
+  - 단일 API 엔드포인트: `GET /dashboard/stats` (모든 통계 한번에 반환)
+  - 통계 카드 6개: Total Active Items, Inventory On Hand, Open Sales Orders, Open Purchase Orders, Active Work Orders, Pending PO Requests
+  - 차트 3개: Monthly Sales (Bar), Monthly PO (Line), Inventory Activity (Line) - 최근 6개월, 빈 달 0으로 채움
+  - 하단 섹션: Recent Sales Orders 테이블 + Recent Activity 타임라인
+  - 파일:
+    - Backend: `models/dashboardModel.js`, `controllers/dashboardController.js`, `routes/dashboardRoutes.js`
+    - Frontend: `layouts/dashboard/index.js`, `RecentSalesOrders/index.js`, `RecentActivityTimeline/index.js`
+- **Bug Fix**: Sales Order - `delivery_date` 빈 문자열 에러 수정
+  - 문제: delivery_date가 빈 문자열 `''`로 전달되면 MySQL date 컬럼에서 에러 발생
+  - 해결: INSERT/UPDATE 시 빈 문자열을 NULL로 변환
+  - 변경 파일: `models/saleModel.js`
+- **Bug Fix**: Item - `instock_quantity` 빈 문자열 에러 수정
+  - 문제: instock_quantity가 빈 문자열 `''`로 전달되면 MySQL int 컬럼에서 에러 발생
+  - 해결: addItem/updateItem에서 빈 문자열을 0으로 변환
+  - 변경 파일: `models/itemModel.js`
+- **UI Cleanup**: Item, Supplier, Customer 디테일 페이지에서 템플릿 Invoices 컴포넌트 제거
+  - 변경 파일: `layouts/items/newitem/index.js`, `layouts/suppliers/newsupplier/index.js`, `layouts/customers/newcustomer/index.js`
 
 ### 2026-02-11
 - **Bug Fix**: BOM - Output Item 자기 참조 방지
@@ -208,7 +267,7 @@ CREATE TABLE ep_purchase_requests (
 ## Database Schema (Key Tables)
 
 ### ep_items
-- item_id, item_code, name, description, part_number, unit_price, etc.
+- item_id, item_code, name, description, part_number, cost_price, sales_price, etc.
 
 ### ep_inventories
 - inventory_id, item_id, quantity, reservation_qty, batch_number, location, expiry_date, created_at
@@ -216,6 +275,12 @@ CREATE TABLE ep_purchase_requests (
 ### ep_inventory_transactions
 - transaction_id, inventory_id, item_id, quantity, transaction_type, transaction_date, notes
 - transaction_type: 'adjustment', 'purchase', 'sale', 'kit_usage', 'kit_production'
+
+### ep_quotations + ep_quotation_details
+- Master-Detail structure
+- Status: draft, sent, accepted, rejected, expired, converted
+- converted_sale_id: 변환된 Sales Order 추적
+- Convert to SO: 헤더 + 상세 항목 일괄 복사 후 status → 'converted'
 
 ### ep_sales + ep_sale_details
 - Master-Detail structure

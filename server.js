@@ -13,6 +13,9 @@ const kitItemRoutes = require('./routes/kitItemRoutes');
 const companyRoutes = require('./routes/companyRoutes');
 const bomRoutes = require('./routes/bomRoutes');
 const workOrderRoutes = require('./routes/workOrderRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
+const quotationRoutes = require('./routes/quotationRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 // const itemDetailsRoutes = require('./routes/itemDetailsRoutes');
 
 const app = express();
@@ -34,6 +37,9 @@ app.use('/kit-items', kitItemRoutes);
 app.use('/company', companyRoutes);
 app.use('/bom', bomRoutes);
 app.use('/work-orders', workOrderRoutes);
+app.use('/dashboard', dashboardRoutes);
+app.use('/quotations', quotationRoutes);
+app.use('/reports', reportRoutes);
 // app.use('/item_details', itemDetailsRoutes);
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
