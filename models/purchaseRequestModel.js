@@ -153,13 +153,14 @@ const convertToPurchaseOrder = (requestIds, poData, callback) => {
       } = poData;
 
       const createdByValue = created_by && created_by !== '' ? created_by : null;
+      const expectedDeliveryValue = expected_delivery && expected_delivery !== '' ? expected_delivery : null;
 
       // 1. Create Purchase Order header
       connection.query(
         `INSERT INTO ep_purchase_orders
          (supplier_id, po_number, order_date, expected_delivery, status, notes, created_by, created_at)
          VALUES (?, ?, ?, ?, 'Pending', ?, ?, NOW())`,
-        [supplier_id, po_number, order_date, expected_delivery, notes, createdByValue],
+        [supplier_id, po_number, order_date, expectedDeliveryValue, notes, createdByValue],
         (err, poResult) => {
           if (err) {
             connection.rollback(() => connection.release());

@@ -25,6 +25,8 @@
 | Sales Orders | ✅ | ✅ | Master-Detail, Ship functionality with inventory deduction |
 | Kit Items (Assembly) | ✅ | ✅ | Reserve → Complete build → Output to inventory |
 | PO Request | ✅ | ✅ | Auto-create on Kit Reserve, Convert to PO |
+| BOM (Bill of Materials) | ✅ | ✅ | 마스터 레시피, 하위 조립품 BOM 연결 지원 |
+| Work Orders | ✅ | ✅ | 계층형 WO, BOM 기반 자동 생성, Tree View, Backflushing |
 
 ### 🔄 In Progress
 
@@ -86,6 +88,49 @@ CREATE TABLE ep_purchase_requests (
 ---
 
 ## Recent Changes (Latest First)
+
+### 2026-02-11
+- **Bug Fix**: BOM - Output Item 자기 참조 방지
+  - 문제: BOM의 Output Item으로 선택한 아이템을 Components의 Item에서도 선택 가능 (순환 참조)
+  - Frontend: Components Item 드롭다운에서 Output Item 필터링 (`availableComponentItems`)
+  - Backend: `createBOM`, `addComponentToBOM`에서 output_item_id와 동일한 component item_id 검증
+  - 변경 파일: `bomform.js`, `bomController.js`
+- **Bug Fix**: Work Order - BOM 기반 WO 생성 시 트랜잭션 데드락 해결
+  - 문제: `createFromBOM` 재귀 호출 시 별도 DB connection/트랜잭션 사용으로 Lock wait timeout 발생
+  - 해결: `options._connection`을 통해 재귀 호출 시 동일한 connection을 공유하도록 리팩토링
+  - 변경 파일: `workOrderModel.js`
+- **Bug Fix**: Work Order - WO 번호 중복 생성 방지
+  - 문제: `generateWONumber`이 pool connection 사용 → 트랜잭션 내 미커밋 INSERT를 못 봄 → 중복 번호 생성
+  - 해결: `generateWONumber`에 optional connection 파라미터 추가, `createFromBOM`에서 트랜잭션 connection 전달
+  - 변경 파일: `workOrderModel.js`
+- **Bug Fix**: Purchase Order - `expected_delivery` 빈 문자열 에러 수정
+  - 문제: expected_delivery가 빈 문자열 `''`로 전달되면 MySQL date 컬럼에서 에러 발생
+  - 해결: INSERT/UPDATE 시 빈 문자열을 NULL로 변환
+  - 변경 파일: `purchaseOrderModel.js`, `purchaseRequestModel.js`
+- **Enhancement**: PO Request - Convert to PO 모달 PO Number 필드 변경
+  - PO Number 자동 생성(prepopulate) 제거, 사용자 직접 입력으로 변경
+  - PO Number를 required 필드로 변경 (미입력 시 alert)
+  - 변경 파일: `layouts/purchaserequests/index.js`
+
+### 2026-02-09
+- **New Feature**: Work Order (작업 지시서) 모듈 완료
+  - 계층형 Work Order 지원 (parent_wo_id, root_wo_id, depth)
+  - BOM 기반 자동 WO 생성 (하위 조립품 BOM이 있으면 자동으로 Child WO 생성)
+  - 상태 머신: Draft → Blocked → Ready → In Progress → Completed
+  - Soft Allocation (가할당): 재고 예약 + 부족 시 PO Request 자동 생성
+  - Backflushing: WO 완료 시 재고 차감 + 완성품 인벤토리 생성
+  - Tree View: MUI TreeView로 계층 구조 시각화 (진행률 표시)
+  - 파일:
+    - Backend: `workOrderModel.js`, `workOrderController.js`, `workOrderRoutes.js`
+    - Frontend: `layouts/workorders/index.js`, `workorderform.js`, `WorkOrderTreeView.js`
+- **New Feature**: BOM (Bill of Materials) 모듈 완료
+  - 마스터 레시피 정의 (output_item_id, output_quantity)
+  - 구성품 관리 (quantity_per_unit)
+  - 하위 조립품 BOM 연결 (is_subassembly, subassembly_bom_id)
+  - 버전 관리 (version), 활성화 상태 (is_active)
+  - 파일:
+    - Backend: `bomModel.js`, `bomController.js`, `bomRoutes.js`
+    - Frontend: `layouts/bom/index.js`, `bomform.js`, `bomTableData.js`
 
 ### 2026-02-06
 - **New Feature**: PO PDF 프린트 기능
@@ -195,6 +240,37 @@ CREATE TABLE ep_purchase_requests (
 - priority: normal, urgent
 - suggested_supplier_id, converted_po_id
 
+### ep_bom_structures (BOM 마스터)
+- bom_id, bom_number, name, description
+- output_item_id: 생산되는 아이템
+- output_quantity: 1회 생산 수량
+- version: 버전 관리 (기본 '1.0')
+- is_active: 활성화 상태
+
+### ep_bom_components (BOM 구성품)
+- bom_component_id, bom_id, item_id
+- quantity_per_unit: 단위당 필요 수량
+- is_subassembly: 하위 조립품 여부
+- subassembly_bom_id: 하위 BOM 참조 (재귀적)
+- sequence_order: 순서
+
+### ep_work_orders (계층형 Work Order)
+- wo_id, wo_number, bom_id, output_item_id
+- quantity_ordered, quantity_completed
+- parent_wo_id: 상위 WO (계층 구조)
+- root_wo_id: 최상위 WO
+- depth: 계층 깊이 (0부터 시작)
+- status: draft, blocked, ready, in_progress, completed, cancelled
+- priority: low, normal, high, urgent
+- planned_start_date, planned_end_date, actual_start_date, actual_end_date
+
+### ep_work_order_components (WO 자재 + 할당 추적)
+- woc_id, wo_id, item_id, inventory_id
+- quantity_required: 필요 수량
+- quantity_allocated: Soft Allocation 수량
+- quantity_consumed: Backflushing 수량
+- is_subassembly, child_wo_id: 하위 WO 연결
+
 ### ep_company
 - company_id, company_name, address_line1, address_line2
 - city, state, postal_code, country
@@ -219,6 +295,29 @@ CREATE TABLE ep_purchase_requests (
 ### Sales Order Ship Workflow
 1. Create Sales Order with details
 2. Ship items (select inventory batch → deduct quantity → log transaction)
+
+### BOM & Work Order 관계
+- **BOM**: 마스터 레시피 ("A를 만들려면 B 2개, C 1개가 필요하다")
+- **Work Order**: 실제 생산 기록 ("2026-02-09에 A 10개를 만든다")
+- Kit Items와 병행 사용 (간단한 조립은 Kit Items, 복잡한 계층 생산은 Work Order)
+
+### Work Order 상태 머신
+```
+Draft ──▶ [체크: 하위 WO 완료? 자재 확보?]
+              │
+    Yes ──────┼───────▶ Ready ──▶ In Progress ──▶ Completed
+              │
+    No ───────┴───────▶ Blocked
+                            │
+                    (조건 충족 시) ──▶ Ready
+```
+
+### Work Order Workflow
+1. **BOM에서 WO 생성**: "Create from BOM" → 수량/우선순위 입력 → 하위 BOM이 있으면 Child WO 자동 생성
+2. **재고 할당 (Allocate)**: Soft Allocation으로 재고 예약 → 부족 시 PO Request 자동 생성
+3. **작업 시작 (Start)**: Ready 상태에서만 시작 가능
+4. **작업 완료 (Complete)**: Backflushing으로 재고 차감 + 완성품 인벤토리 생성
+5. **부모 WO 자동 업데이트**: 모든 Child WO 완료 + 자재 확보 시 부모 WO가 Ready로 전환
 
 ---
 
@@ -246,3 +345,4 @@ projectPlan.md 파일을 업데이트 해줘.
 - Frontend port: 3000
 - Backend port: 5000
 - All API calls use axios to http://localhost:5000
+

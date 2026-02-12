@@ -443,4 +443,189 @@ CREATE TABLE `ep_company` (
 INSERT INTO `ep_company` (`company_id`, `company_name`, `address_line1`, `city`, `state`, `postal_code`, `country`, `phone`, `email`, `website`)
 VALUES (1, 'n6tec', '123 Main Street', 'City', 'State', '12345', 'USA', '(123) 456-7890', 'info@n6tec.com', 'www.n6tec.com');
 
+--
+-- Table structure for table `ep_kit_items` (existing - added for completeness)
+--
+
+DROP TABLE IF EXISTS `ep_kit_items`;
+CREATE TABLE `ep_kit_items` (
+  `kit_item_id` int NOT NULL AUTO_INCREMENT,
+  `kit_number` varchar(50) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `description` text,
+  `quantity_to_build` int DEFAULT '1',
+  `completed_quantity` int DEFAULT '0',
+  `status` enum('draft','in_progress','completed','cancelled') DEFAULT 'draft',
+  `output_item_id` int DEFAULT NULL,
+  `notes` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` int DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`kit_item_id`),
+  UNIQUE KEY `uk_kit_number` (`kit_number`),
+  KEY `fk_kit_output_item` (`output_item_id`),
+  KEY `fk_kit_created_by` (`created_by`),
+  CONSTRAINT `fk_kit_output_item` FOREIGN KEY (`output_item_id`) REFERENCES `ep_items` (`item_id`),
+  CONSTRAINT `fk_kit_created_by` FOREIGN KEY (`created_by`) REFERENCES `ep_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `ep_kit_item_components`
+--
+
+DROP TABLE IF EXISTS `ep_kit_item_components`;
+CREATE TABLE `ep_kit_item_components` (
+  `component_id` int NOT NULL AUTO_INCREMENT,
+  `kit_item_id` int NOT NULL,
+  `item_id` int NOT NULL,
+  `quantity_per_kit` decimal(10,4) DEFAULT '1.0000',
+  `inventory_id` int DEFAULT NULL,
+  `reserved_quantity` decimal(10,4) DEFAULT '0.0000',
+  `used_quantity` decimal(10,4) DEFAULT '0.0000',
+  `notes` text,
+  PRIMARY KEY (`component_id`),
+  KEY `fk_kit_comp_kit` (`kit_item_id`),
+  KEY `fk_kit_comp_item` (`item_id`),
+  KEY `fk_kit_comp_inv` (`inventory_id`),
+  CONSTRAINT `fk_kit_comp_kit` FOREIGN KEY (`kit_item_id`) REFERENCES `ep_kit_items` (`kit_item_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_kit_comp_item` FOREIGN KEY (`item_id`) REFERENCES `ep_items` (`item_id`),
+  CONSTRAINT `fk_kit_comp_inv` FOREIGN KEY (`inventory_id`) REFERENCES `ep_inventories` (`inventory_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- ============================================================
+-- BOM (Bill of Materials) and Work Order Tables
+-- ============================================================
+
+--
+-- Table structure for table `ep_bom_structures` (BOM Master Recipe)
+--
+
+DROP TABLE IF EXISTS `ep_bom_structures`;
+CREATE TABLE `ep_bom_structures` (
+  `bom_id` int NOT NULL AUTO_INCREMENT,
+  `bom_number` varchar(50) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `description` text,
+  `output_item_id` int NOT NULL,
+  `output_quantity` decimal(10,2) DEFAULT '1.00',
+  `version` varchar(20) DEFAULT '1.0',
+  `is_active` tinyint(1) DEFAULT '1',
+  `notes` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` int DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`bom_id`),
+  UNIQUE KEY `uk_bom_number` (`bom_number`),
+  KEY `fk_bom_output_item` (`output_item_id`),
+  KEY `fk_bom_created_by` (`created_by`),
+  CONSTRAINT `fk_bom_output_item` FOREIGN KEY (`output_item_id`) REFERENCES `ep_items` (`item_id`),
+  CONSTRAINT `fk_bom_created_by` FOREIGN KEY (`created_by`) REFERENCES `ep_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `ep_bom_components` (BOM Components)
+--
+
+DROP TABLE IF EXISTS `ep_bom_components`;
+CREATE TABLE `ep_bom_components` (
+  `bom_component_id` int NOT NULL AUTO_INCREMENT,
+  `bom_id` int NOT NULL,
+  `item_id` int NOT NULL,
+  `quantity_per_unit` decimal(10,4) NOT NULL,
+  `is_subassembly` tinyint(1) DEFAULT '0',
+  `subassembly_bom_id` int DEFAULT NULL,
+  `sequence_order` int DEFAULT '0',
+  `notes` text,
+  PRIMARY KEY (`bom_component_id`),
+  KEY `fk_bom_comp_bom` (`bom_id`),
+  KEY `fk_bom_comp_item` (`item_id`),
+  KEY `fk_bom_comp_sub_bom` (`subassembly_bom_id`),
+  CONSTRAINT `fk_bom_comp_bom` FOREIGN KEY (`bom_id`) REFERENCES `ep_bom_structures` (`bom_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_bom_comp_item` FOREIGN KEY (`item_id`) REFERENCES `ep_items` (`item_id`),
+  CONSTRAINT `fk_bom_comp_sub_bom` FOREIGN KEY (`subassembly_bom_id`) REFERENCES `ep_bom_structures` (`bom_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `ep_work_orders` (Hierarchical Work Orders)
+--
+
+DROP TABLE IF EXISTS `ep_work_orders`;
+CREATE TABLE `ep_work_orders` (
+  `wo_id` int NOT NULL AUTO_INCREMENT,
+  `wo_number` varchar(50) NOT NULL,
+  `bom_id` int DEFAULT NULL,
+  `output_item_id` int NOT NULL,
+  `quantity_ordered` decimal(10,2) NOT NULL,
+  `quantity_completed` decimal(10,2) DEFAULT '0.00',
+  `parent_wo_id` int DEFAULT NULL,
+  `root_wo_id` int DEFAULT NULL,
+  `depth` int DEFAULT '0',
+  `status` enum('draft','blocked','ready','in_progress','completed','cancelled') DEFAULT 'draft',
+  `planned_start_date` date DEFAULT NULL,
+  `planned_end_date` date DEFAULT NULL,
+  `actual_start_date` datetime DEFAULT NULL,
+  `actual_end_date` datetime DEFAULT NULL,
+  `priority` enum('low','normal','high','urgent') DEFAULT 'normal',
+  `notes` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` int DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`wo_id`),
+  UNIQUE KEY `uk_wo_number` (`wo_number`),
+  KEY `fk_wo_bom` (`bom_id`),
+  KEY `fk_wo_output_item` (`output_item_id`),
+  KEY `fk_wo_parent` (`parent_wo_id`),
+  KEY `fk_wo_root` (`root_wo_id`),
+  KEY `fk_wo_created_by` (`created_by`),
+  KEY `idx_wo_status` (`status`),
+  KEY `idx_wo_depth` (`depth`),
+  CONSTRAINT `fk_wo_bom` FOREIGN KEY (`bom_id`) REFERENCES `ep_bom_structures` (`bom_id`),
+  CONSTRAINT `fk_wo_output_item` FOREIGN KEY (`output_item_id`) REFERENCES `ep_items` (`item_id`),
+  CONSTRAINT `fk_wo_parent` FOREIGN KEY (`parent_wo_id`) REFERENCES `ep_work_orders` (`wo_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_wo_root` FOREIGN KEY (`root_wo_id`) REFERENCES `ep_work_orders` (`wo_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_wo_created_by` FOREIGN KEY (`created_by`) REFERENCES `ep_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `ep_work_order_components` (WO Materials with Allocation Tracking)
+--
+
+DROP TABLE IF EXISTS `ep_work_order_components`;
+CREATE TABLE `ep_work_order_components` (
+  `woc_id` int NOT NULL AUTO_INCREMENT,
+  `wo_id` int NOT NULL,
+  `item_id` int NOT NULL,
+  `inventory_id` int DEFAULT NULL,
+  `quantity_required` decimal(10,4) NOT NULL,
+  `quantity_allocated` decimal(10,4) DEFAULT '0.0000',
+  `quantity_consumed` decimal(10,4) DEFAULT '0.0000',
+  `is_subassembly` tinyint(1) DEFAULT '0',
+  `child_wo_id` int DEFAULT NULL,
+  `sequence_order` int DEFAULT '0',
+  `notes` text,
+  PRIMARY KEY (`woc_id`),
+  KEY `fk_woc_wo` (`wo_id`),
+  KEY `fk_woc_item` (`item_id`),
+  KEY `fk_woc_inventory` (`inventory_id`),
+  KEY `fk_woc_child_wo` (`child_wo_id`),
+  CONSTRAINT `fk_woc_wo` FOREIGN KEY (`wo_id`) REFERENCES `ep_work_orders` (`wo_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_woc_item` FOREIGN KEY (`item_id`) REFERENCES `ep_items` (`item_id`),
+  CONSTRAINT `fk_woc_inventory` FOREIGN KEY (`inventory_id`) REFERENCES `ep_inventories` (`inventory_id`),
+  CONSTRAINT `fk_woc_child_wo` FOREIGN KEY (`child_wo_id`) REFERENCES `ep_work_orders` (`wo_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- ============================================================
+-- ALTER statements for existing tables
+-- ============================================================
+
+-- Add 'work_order' to ep_purchase_requests source_type enum
+-- Note: Run this ALTER statement separately if the column already exists
+-- ALTER TABLE `ep_purchase_requests`
+-- MODIFY COLUMN `source_type` enum('kit_reserve','manual','sales_order','work_order') DEFAULT 'manual';
+
+-- Add new transaction types to ep_inventory_transactions
+-- Note: Run this ALTER statement separately if the column already exists
+-- ALTER TABLE `ep_inventory_transactions`
+-- MODIFY COLUMN `transaction_type` enum('purchase','sale','adjustment','kit_usage','kit_production','wo_allocation','wo_consumption','wo_production') NOT NULL;
+
 -- Dump completed on 2026-02-05 14:04:08

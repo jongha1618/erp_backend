@@ -70,6 +70,7 @@ const addPurchaseOrder = (data, callback) => {
 
   // created_by가 없거나 빈 문자열이면 NULL로 처리
   const createdByValue = created_by && created_by !== '' ? created_by : null;
+  const expectedDeliveryValue = expected_delivery && expected_delivery !== '' ? expected_delivery : null;
 
   const sql = `INSERT INTO ep_purchase_orders
               (supplier_id, po_number, order_date, expected_delivery, total_amount,
@@ -78,7 +79,7 @@ const addPurchaseOrder = (data, callback) => {
 
   db.query(
     sql,
-    [supplier_id, po_number, order_date, expected_delivery, total_amount,
+    [supplier_id, po_number, order_date, expectedDeliveryValue, total_amount,
      status || 'pending', notes, document_link, createdByValue],
     (err, result) => {
       if (err) {
@@ -125,12 +126,14 @@ const updatePurchaseOrder = (id, data, callback) => {
     user_id // 현재 사용자 ID (status 변경 추적용)
   } = data;
 
+  const expectedDeliveryValue = expected_delivery && expected_delivery !== '' ? expected_delivery : null;
+
   // Build dynamic query based on status
   let sql = `UPDATE ep_purchase_orders
      SET supplier_id = ?, po_number = ?, order_date = ?, expected_delivery = ?,
          total_amount = ?, status = ?, notes = ?, document_link = ?, updated_at = NOW()`;
 
-  let params = [supplier_id, po_number, order_date, expected_delivery, total_amount,
+  let params = [supplier_id, po_number, order_date, expectedDeliveryValue, total_amount,
      status, notes, document_link];
 
   // Add approved_by and approved_date when status is Approved
