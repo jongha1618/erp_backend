@@ -21,26 +21,32 @@ const getItemById = (id, callback) => {
 };
 
 const updateItem = (id, data, callback) => {
-  const { item_code, name, part_number, description, serial_number, instock_quantity, document_link,} = data;
+  const { item_code, name, part_number, description, serial_number, instock_quantity, document_link, cost_price, sales_price } = data;
+  const instockValue = instock_quantity !== '' && instock_quantity != null ? instock_quantity : 0;
+  const costPriceValue = cost_price !== '' && cost_price != null ? cost_price : 0;
+  const salesPriceValue = sales_price !== '' && sales_price != null ? sales_price : 0;
   db.query(
     `UPDATE ep_items SET item_code = ?, name = ?, part_number = ?, description = ?, serial_number = ?,
-      instock_quantity = ?, document_link = ? WHERE item_id =?`,
-    [item_code, name, part_number, description, serial_number, instock_quantity, document_link, id ],
+      instock_quantity = ?, document_link = ?, cost_price = ?, sales_price = ? WHERE item_id =?`,
+    [item_code, name, part_number, description, serial_number, instockValue, document_link, costPriceValue, salesPriceValue, id ],
     callback
   );
 };
 
 const addItem = (data, callback) => {
   const {
-    item_code, name, part_number, description, serial_number, instock_quantity, document_link
+    item_code, name, part_number, description, serial_number, instock_quantity, document_link, cost_price, sales_price
   } = data;
 
-  const sql = `INSERT INTO ep_items 
-              (item_code, name, part_number, description, serial_number, instock_quantity, document_link) 
-              VALUES (?, ?, ?, ?, ?, ?, ?)`;
+  const sql = `INSERT INTO ep_items
+              (item_code, name, part_number, description, serial_number, instock_quantity, document_link, cost_price, sales_price)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
+  const instockValue = instock_quantity !== '' && instock_quantity != null ? instock_quantity : 0;
+  const costPriceValue = cost_price !== '' && cost_price != null ? cost_price : 0;
+  const salesPriceValue = sales_price !== '' && sales_price != null ? sales_price : 0;
   db.query(sql, [
-    item_code, name, part_number, description, serial_number, instock_quantity, document_link
+    item_code, name, part_number, description, serial_number, instockValue, document_link, costPriceValue, salesPriceValue
   ], (err, result) => {
     if (err) {
       console.error("Database error:", err);
